@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>广东省基础测绘综合调度</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #04121b;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 舞台：保持底图原始比例 1799 x 820，图斑按百分比定位，任何窗口尺寸下都对齐地图 */
+  .stage {
+    position: relative;
+    aspect-ratio: 1799 / 820;
+    width: min(100vw, 100vh * (1799 / 820));
+    background-image: url('./assets/bg.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    overflow: hidden;
+  }
+
+  /* 图斑标记：位置、大小、节奏、长宽比由 CSS 变量控制 */
+  .marker {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: var(--w);
+    aspect-ratio: var(--ar, 27 / 20);
+    transform: translate(-50%, -50%);
+    z-index: 2;
+  }
+
+  .patch {
+    position: absolute;
+    inset: 0;
+    animation: patch-blink 4s ease-in-out var(--delay, 0s) infinite;
+    will-change: opacity;
+  }
+
+  /* svg 子元素或 img 子元素都能填满容器 */
+  .patch .shape > svg,
+  .patch .shape > img,
+  .patch .halo > svg,
+  .patch .halo > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .patch .shape {
+    position: absolute;
+    inset: 0;
+    /* 多层 drop-shadow 叠加 + 轻微 flicker，模拟荧光灯发光感 */
+    filter:
+      drop-shadow(0 0 2px  rgba(7, 255, 255, .9))
+      drop-shadow(0 0 6px  rgba(7, 255, 255, .85))
+      drop-shadow(0 0 14px rgba(7, 255, 255, .7))
+      drop-shadow(0 0 28px rgba(7, 255, 255, .45));
+    animation: neon-flicker 0.7s ease-in-out var(--delay, 0s) infinite alternate;
+  }
+
+  /* 光晕：放大的同形模糊复制层，整体呼吸 + 荧光强度 flicker */
+  .patch .halo {
+    position: absolute;
+    inset: -40%;
+    filter: blur(10px) brightness(2.2);
+    opacity: .9;
+    animation: halo-pulse 4s ease-in-out var(--delay, 0s) infinite;
+  }
+
+  /* 描边：按图斑 alpha 轮廓外扩生成的静态青色描边，独立图层，不参与闪烁 */
+  .marker .stroke {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    filter: url(#patch-stroke);
+    pointer-events: none;
+  }
+
+  .marker .stroke > svg,
+  .marker .stroke > img,
+  .marker .stroke > div > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 雷达扩散圈：圈的直径 = 图斑宽度 × --ring-scale */
+  .rings {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(100% * var(--ring-scale, 1));
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .rings span {
+    position: absolute;
+    inset: 0;
+    border: 0.5px solid rgba(7, 255, 255, .8);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(7, 255, 255, .35), inset 0 0 8px rgba(7, 255, 255, .22);
+    opacity: 0;
+    animation: ring-expand 4s cubic-bezier(.25, .5, .3, 1) var(--delay, 0s) infinite;
+  }
+
+  .marker .rings span:nth-child(2) { animation-delay: calc(var(--delay, 0s) + 1.33s); }
+  .marker .rings span:nth-child(3) { animation-delay: calc(var(--delay, 0s) + 2.66s); }
+
+  /* 缓入缓出的双拍呼吸，节奏更分明 */
+  @keyframes patch-blink {
+    0%, 12%  { opacity: 1; }
+    32%      { opacity: .32; }
+    48%      { opacity: 1; }
+    62%      { opacity: .55; }
+    78%, 100% { opacity: 1; }
+  }
+
+  @keyframes halo-pulse {
+    0%, 100% { transform: scale(1);    opacity: .8; }
+    50%      { transform: scale(1.22); opacity: .3; }
+  }
+
+  /* 荧光灯式的快闪：亮度微幅波动，配合 drop-shadow 营造通电感 */
+  @keyframes neon-flicker {
+    0%, 100% { filter:
+      drop-shadow(0 0 2px  rgba(7, 255, 255, .9))
+      drop-shadow(0 0 6px  rgba(7, 255, 255, .85))
+      drop-shadow(0 0 14px rgba(7, 255, 255, .7))
+      drop-shadow(0 0 28px rgba(7, 255, 255, .45)); }
+    50%      { filter:
+      drop-shadow(0 0 3px  rgba(7, 255, 255, 1))
+      drop-shadow(0 0 9px  rgba(7, 255, 255, .95))
+      drop-shadow(0 0 20px rgba(7, 255, 255, .8))
+      drop-shadow(0 0 36px rgba(7, 255, 255, .55)); }
+  }
+
+  @keyframes ring-expand {
+    0%   { transform: scale(.6); opacity: 0; }
+    12%  { opacity: .8; }
+    100% { transform: scale(3.4); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .patch, .patch .halo, .patch .shape, .rings span { animation: none; }
+    .rings span { opacity: .35; transform: scale(1.6); }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <svg width="0" height="0" aria-hidden="true" style="position: absolute;">
+      <symbol id="patchShape" viewBox="0 0 27 20">
+        <path d="M27 0H13L7 12.5V14H8V15.5H10V13.5H12V15H16V7.5H18V9H20L23 5H27V0Z" fill="#07FFFF"/>
+        <path d="M7 16.5L3 13H0V18L4.5 20L7 16.5Z" fill="#07FFFF"/>
+      </symbol>
+      <filter id="patch-stroke" x="-40%" y="-40%" width="180%" height="180%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius=".8" result="dilated"/>
+        <feComposite in="dilated" in2="SourceAlpha" operator="out" result="ring"/>
+        <feFlood flood-color="#07FFFF" result="color"/>
+        <feComposite in="color" in2="ring" operator="in"/>
+      </filter>
+    </svg>
+
+    <div class="marker" style="--x: 50%;   --y: 42%; --w: 1.07%; --delay: 0s;">
+      <div class="rings"><span></span><span></span><span></span></div>
+      <div class="patch">
+        <svg class="halo" viewBox="0 0 27 20" aria-hidden="true"><use href="#patchShape"/></svg>
+        <svg class="shape" viewBox="0 0 27 20" role="img" aria-label="地图图斑"><use href="#patchShape"/></svg>
+      </div>
+      <svg class="stroke" viewBox="0 0 27 20" aria-hidden="true"><use href="#patchShape"/></svg>
+    </div>
+
+    <div class="marker" style="--x: 62.5%; --y: 44%; --w: 0.292%; --ar: 7/9; --ring-scale: 1.5; --delay: -1.2s;">
+      <div class="rings"><span></span><span></span><span></span></div>
+      <div class="patch">
+        <div class="halo"><img src="./assets/patchA.png" alt="" aria-hidden="true"></div>
+        <div class="shape"><img src="./assets/patchA.png" alt="地图图斑"></div>
+      </div>
+      <div class="stroke"><img src="./assets/patchA.png" alt="" aria-hidden="true"></div>
+    </div>
+
+    <div class="marker" style="--x: 41.5%; --y: 63%; --w: 0.78%; --delay: -2.5s;">
+      <div class="rings"><span></span><span></span><span></span></div>
+      <div class="patch">
+        <svg class="halo" viewBox="0 0 27 20" aria-hidden="true"><use href="#patchShape"/></svg>
+        <svg class="shape" viewBox="0 0 27 20" role="img" aria-label="地图图斑"><use href="#patchShape"/></svg>
+      </div>
+      <svg class="stroke" viewBox="0 0 27 20" aria-hidden="true"><use href="#patchShape"/></svg>
+    </div>
+  </div>
+</body>
+</html>
